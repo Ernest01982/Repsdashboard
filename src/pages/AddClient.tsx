@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
@@ -27,13 +27,29 @@ type FormData = {
   call_cadence: string;
 };
 
+type GeocodedLocation = { lat: number; lng: number };
+
+const buildAddressSignature = (values: Partial<FormData>) =>
+  [values.address, values.city, values.region, values.postal_code]
+    .map(value => (value ?? '').trim().toLowerCase())
+    .join('|');
+
 export default function AddClient() {
   const navigate = useNavigate();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [geocodedLocation, setGeocodedLocation] = useState<GeocodedLocation | null>(null);
+  const [geocodedSignature, setGeocodedSignature] = useState('');
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    getValues,
+    formState: { errors }
+  } = useForm<FormData>({
     defaultValues: {
       channel: 'On-premise',
       call_cadence: 'Weekly'
@@ -42,6 +58,26 @@ export default function AddClient() {
 
   const address = watch('address');
   const city = watch('city');
+  const region = watch('region');
+  const postalCode = watch('postal_code');
+
+  const { ref: addressRef, ...addressField } = register('address');
+
+  const currentAddressSignature = useMemo(
+    () => buildAddressSignature({ address, city, region, postal_code: postalCode }),
+    [address, city, region, postalCode]
+  );
+
+  useEffect(() => {
+    if (
+      geocodedLocation &&
+      geocodedSignature &&
+      currentAddressSignature !== geocodedSignature
+    ) {
+      setGeocodedLocation(null);
+      setGeocodedSignature('');
+    }
+  }, [currentAddressSignature, geocodedLocation, geocodedSignature]);
 
   // Load retailers for dropdown
   const { data: retailers } = useQuery<RetailerOption[]>({
@@ -59,7 +95,7 @@ export default function AddClient() {
   });
 
   const geocodeLocation = async () => {
-    const currentValues = watch(); // Get all current form values
+    const currentValues = getValues();
     const fullAddress = [
       currentValues.address,
       currentValues.city,
@@ -101,19 +137,83 @@ export default function AddClient() {
       const location = result.geometry.location;
       const lat = location.lat();
       const lng = location.lng();
-      
-      // Store coordinates for form submission without clearing other fields
-      (window as any).geocodedLocation = { lat, lng };
-      
-      toast({ 
-        kind: 'success', 
-        msg: `Location found: ${lat.toFixed(5)}, ${lng.toFixed(5)}` 
+
+      setGeocodedLocation({ lat, lng });
+      setGeocodedSignature(buildAddressSignature(currentValues));
+
+      toast({
+        kind: 'success',
+        msg: `Location found: ${lat.toFixed(5)}, ${lng.toFixed(5)}`
       });
     } catch (error: any) {
       console.error('Geocoding error:', error);
       toast({ kind: 'error', msg: `Geocoding failed: ${error.message}` });
     } finally {
       setGeocoding(false);
+    }
+  };
+
+  const handleAddressAutocomplete = async (inputElement: HTMLInputElement) => {
+    try {
+      const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+
+      if (!gm?.places?.Autocomplete) {
+        console.warn('Places Autocomplete not available');
+        return;
+      }
+
+      const autocomplete = new gm.places.Autocomplete(inputElement, {
+        types: ['address'],
+        fields: ['address_components', 'geometry', 'formatted_address']
+      });
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+
+        if (!place.geometry) {
+          console.warn('No geometry data for selected place');
+          return;
+        }
+
+        try {
+          const components = place.address_components || [];
+          const getComponent = (type: string) =>
+            components.find((c: any) => c.types.includes(type))?.long_name || '';
+
+          const streetNumber = getComponent('street_number');
+          const route = getComponent('route');
+          const addressValue = [streetNumber, route].filter(Boolean).join(' ');
+          const cityValue = getComponent('locality') || getComponent('administrative_area_level_2');
+          const regionValue = getComponent('administrative_area_level_1');
+          const postalValue = getComponent('postal_code');
+
+          setValue('address', addressValue, { shouldDirty: true });
+          setValue('city', cityValue, { shouldDirty: true });
+          setValue('region', regionValue, { shouldDirty: true });
+          setValue('postal_code', postalValue, { shouldDirty: true });
+
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+
+          setGeocodedLocation({ lat, lng });
+          setGeocodedSignature(
+            buildAddressSignature({
+              address: addressValue,
+              city: cityValue,
+              region: regionValue,
+              postal_code: postalValue
+            })
+          );
+
+          toast({ kind: 'success', msg: 'Address autocompleted and geocoded' });
+        } catch (error) {
+          console.error('Error processing place data:', error);
+          toast({ kind: 'error', msg: 'Error processing address data' });
+        }
+      });
+    } catch (error: any) {
+      console.error('Failed to initialize address autocomplete:', error);
+      // Don't show error toast for autocomplete failures - just disable the feature
     }
   };
 
@@ -126,7 +226,7 @@ export default function AddClient() {
     setLoading(true);
     try {
       const clientId = uuid();
-      const geocoded = (window as any).geocodedLocation;
+      const geocoded = geocodedLocation;
 
       await enqueue({
         kind: 'insert',
@@ -142,8 +242,8 @@ export default function AddClient() {
           channel: data.channel || null,
           store_code: data.store_code.trim() || null,
           call_cadence: data.call_cadence || null,
-          latitude: geocoded?.lat || null,
-          longitude: geocoded?.lng || null,
+          latitude: geocoded?.lat ?? null,
+          longitude: geocoded?.lng ?? null,
           is_active: true
         }
       });
@@ -204,10 +304,11 @@ export default function AddClient() {
           </label>
           <input
             type="text"
-            {...register('address')}
+            {...addressField}
             className="w-full rounded-lg border px-3 py-2 text-sm"
             placeholder="Street address"
             ref={(el) => {
+              addressRef(el);
               if (el && !el.dataset.autocompleteSetup) {
                 el.dataset.autocompleteSetup = 'true';
                 handleAddressAutocomplete(el);
@@ -255,9 +356,9 @@ export default function AddClient() {
 
         {(address || city) && (
           <div className="p-3 bg-gray-50 rounded-lg">
-            {(window as any).geocodedLocation && (
+            {geocodedLocation && (
               <div className="mb-2 text-sm text-green-600">
-                ✓ Coordinates: {(window as any).geocodedLocation.lat.toFixed(5)}, {(window as any).geocodedLocation.lng.toFixed(5)}
+                ✓ Coordinates: {geocodedLocation.lat.toFixed(5)}, {geocodedLocation.lng.toFixed(5)}
               </div>
             )}
             <Button
