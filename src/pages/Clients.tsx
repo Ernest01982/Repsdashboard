@@ -8,7 +8,7 @@ import { TENANT_ID } from '../lib/env';
 import { insertRow, updateRow, deleteRow, WriteDisabledError } from '../lib/mutations';
 import { useForm } from 'react-hook-form';
 import { useToast } from '../components/Toast';
-import { geocodeAddress } from '../lib/mapsApi';
+import { loadGoogleMaps } from '../lib/loadGoogle';
 
 export type ClientRow = {
   id: string;
@@ -154,21 +154,62 @@ export default function Clients() {
         return;
       }
       try {
-        const res = await geocodeAddress(addressLine, 'za'); // set region as needed
-        if (res?.location) {
-          setValue('latitude', res.location.lat);
-          setValue('longitude', res.location.lng);
-          toast({
-            kind: 'success',
-            msg: `Geocoded ✓ (${res.location.lat.toFixed(
-              5
-            )}, ${res.location.lng.toFixed(5)})`
+        const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+        const geocoder = new gm.Geocoder();
+        
+        const result = await new Promise<any>((resolve, reject) => {
+          geocoder.geocode({ address: addressLine }, (results: any[], status: string) => {
+            if (status === 'OK' && results[0]) {
+              resolve(results[0]);
+            } else {
+              reject(new Error(`Geocoding failed: ${status}`));
+            }
           });
-        } else {
-          toast({ kind: 'error', msg: 'No geocode match' });
-        }
+        });
+        
+        const location = result.geometry.location;
+        setValue('latitude', location.lat());
+        setValue('longitude', location.lng());
+        toast({
+          kind: 'success',
+          msg: `Geocoded ✓ (${location.lat().toFixed(5)}, ${location.lng().toFixed(5)})`
+        });
       } catch (e: any) {
         toast({ kind: 'error', msg: e?.message ?? 'Geocode failed' });
+      }
+    }
+
+    async function handleAddressAutocomplete(inputElement: HTMLInputElement) {
+      try {
+        const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+        const autocomplete = new gm.places.Autocomplete(inputElement, {
+          types: ['establishment', 'geocode'],
+          fields: ['formatted_address', 'geometry', 'address_components']
+        });
+        
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (place.geometry) {
+            // Parse address components
+            const components = place.address_components || [];
+            const getComponent = (type: string) => 
+              components.find((c: any) => c.types.includes(type))?.long_name || '';
+            
+            setValue('address', getComponent('street_number') + ' ' + getComponent('route'));
+            setValue('city', getComponent('locality') || getComponent('administrative_area_level_2'));
+            setValue('region', getComponent('administrative_area_level_1'));
+            setValue('postal_code', getComponent('postal_code'));
+            setValue('country', getComponent('country'));
+            setValue('latitude', place.geometry.location.lat());
+            setValue('longitude', place.geometry.location.lng());
+          toast({
+            kind: 'success',
+            msg: 'Address autocompleted and geocoded'
+          });
+          }
+        });
+      } catch (e: any) {
+        console.warn('Autocomplete setup failed:', e);
       }
     }
 
@@ -217,6 +258,12 @@ export default function Clients() {
           {...register('address')}
           placeholder="Street address"
           className="col-span-2 h-9 rounded border px-3"
+          ref={(el) => {
+            if (el && !el.dataset.autocompleteSetup) {
+              el.dataset.autocompleteSetup = 'true';
+              handleAddressAutocomplete(el);
+            }
+          }}
         />
         <input
           {...register('city')}

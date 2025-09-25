@@ -7,7 +7,7 @@ import { uuid } from '../lib/ids';
 import { TENANT_ID } from '../lib/env';
 import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
-import { geocodeAddress } from '../lib/maps';
+import { loadGoogleMaps } from '../lib/loadGoogle';
 import Button from '../components/Button';
 
 type RetailerOption = {
@@ -67,28 +67,25 @@ export default function AddClient() {
 
     setGeocoding(true);
     try {
-      // Call the maps edge function directly instead of using the wrapper
-      const { data, error } = await supabase.functions.invoke('maps', {
-        body: { 
-          action: 'geocode', 
-          payload: { address: fullAddress } 
-        }
+      const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+      const geocoder = new gm.Geocoder();
+      
+      const result = await new Promise<any>((resolve, reject) => {
+        geocoder.geocode({ address: fullAddress }, (results: any[], status: string) => {
+          if (status === 'OK' && results[0]) {
+            resolve(results[0]);
+          } else {
+            reject(new Error(`Geocoding failed: ${status}`));
+          }
+        });
       });
       
-      if (error) {
-        throw new Error(error.message || 'Edge function call failed');
-      }
-      
-      if (!data?.ok) {
-        throw new Error(data?.error || 'Geocoding failed');
-      }
-      
-      const result = data.result;
+      const location = result.geometry.location;
       toast({ kind: 'success', msg: 'Location found and will be saved' });
       // Store geocoded data for form submission
       (window as any).geocodedLocation = {
-        lat: result.lat,
-        lng: result.lng,
+        lat: location.lat(),
+        lng: location.lng(),
         formatted_address: result.formatted_address
       };
     } catch (error: any) {

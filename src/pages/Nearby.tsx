@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { TENANT_ID } from '../lib/env';
-import { placesSearch } from '../lib/maps';
+import { loadGoogleMaps } from '../lib/loadGoogle';
 import { enqueue } from '../lib/queue';
 import { uuid } from '../lib/ids';
 import { useToast } from '../components/Toast';
@@ -84,14 +84,38 @@ export default function Nearby() {
     }
 
     try {
-      const results = await placesSearch(
-        'wine store OR bottle shop OR liquor store',
-        userLocation,
-        8000
-      );
-      setProspects(results);
+      const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+      const service = new gm.places.PlacesService(document.createElement('div'));
+      
+      const request = {
+        location: new gm.LatLng(userLocation.lat, userLocation.lng),
+        radius: 8000,
+        keyword: 'wine store bottle shop liquor store',
+        type: 'store'
+      };
+      
+      const results = await new Promise<any[]>((resolve, reject) => {
+        service.nearbySearch(request, (results: any[], status: string) => {
+          if (status === gm.places.PlacesServiceStatus.OK) {
+            resolve(results || []);
+          } else {
+            reject(new Error(`Places search failed: ${status}`));
+          }
+        });
+      });
+      
+      const prospects = results.map((place: any) => ({
+        place_id: place.place_id,
+        name: place.name,
+        address: place.vicinity || place.formatted_address || '',
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng(),
+        types: place.types || []
+      }));
+      
+      setProspects(prospects);
       setShowProspects(true);
-      toast({ kind: 'success', msg: `Found ${results.length} prospects` });
+      toast({ kind: 'success', msg: `Found ${prospects.length} prospects` });
     } catch (error: any) {
       toast({ kind: 'error', msg: error.message });
     }

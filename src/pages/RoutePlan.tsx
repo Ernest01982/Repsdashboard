@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { supabase } from '../lib/supabase';
 import { TENANT_ID } from '../lib/env';
-import { optimizeRoute, decodePolyline } from '../lib/maps';
+import { loadGoogleMaps } from '../lib/loadGoogle';
 import { useToast } from '../components/Toast';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
@@ -109,17 +109,49 @@ export default function RoutePlan() {
     }
 
     try {
-      const waypoints = selectedClients.map(c => ({ lat: c.latitude, lng: c.longitude }));
+      const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+      const directionsService = new gm.DirectionsService();
       
-      const result = await optimizeRoute(userLocation, waypoints);
-      setOptimizedRoute(result);
+      const waypoints = selectedClients.slice(0, -1).map(c => ({
+        location: new gm.LatLng(c.latitude, c.longitude),
+        stopover: true
+      }));
       
-      const polylineCoords = decodePolyline(result.encodedPolyline);
-      setRoutePolyline(polylineCoords);
+      const destination = selectedClients[selectedClients.length - 1];
+      
+      const result = await new Promise<any>((resolve, reject) => {
+        directionsService.route({
+          origin: new gm.LatLng(userLocation.lat, userLocation.lng),
+          destination: new gm.LatLng(destination.latitude, destination.longitude),
+          waypoints: waypoints,
+          optimizeWaypoints: true,
+          travelMode: gm.TravelMode.DRIVING
+        }, (result: any, status: string) => {
+          if (status === 'OK') {
+            resolve(result);
+          } else {
+            reject(new Error(`Route optimization failed: ${status}`));
+          }
+        });
+      });
+      
+      const route = result.routes[0];
+      const leg = route.legs[0];
+      
+      setOptimizedRoute({
+        distanceMeters: route.legs.reduce((sum: number, leg: any) => sum + leg.distance.value, 0),
+        duration: route.legs.reduce((sum: number, leg: any) => sum + leg.duration.value, 0) + 's',
+        waypointOrder: result.routes[0].waypoint_order || [],
+        encodedPolyline: route.overview_polyline.points
+      });
+      
+      // Convert Google Maps path to Leaflet format
+      const path = route.overview_path.map((point: any) => [point.lat(), point.lng()]);
+      setRoutePolyline(path);
       
       toast({ 
         kind: 'success', 
-        msg: `Route optimized: ${result.distanceMeters}m, ${result.duration}` 
+        msg: `Route optimized: ${Math.round(route.legs.reduce((sum: number, leg: any) => sum + leg.distance.value, 0) / 1000)}km` 
       });
       
     } catch (error: any) {
