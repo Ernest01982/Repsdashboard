@@ -173,17 +173,24 @@ export default function Clients() {
     }
 
     async function onSubmit(values: Partial<ClientRow>) {
+      // Convert empty strings to null for UUID fields to prevent validation errors
+      const cleanedValues = {
+        ...values,
+        retailer_id: values.retailer_id === '' ? null : values.retailer_id,
+        territory_id: values.territory_id === '' ? null : values.territory_id,
+      };
+
       // Persist core fields (address + lat/lng included)
-      const saved = await upsert.mutateAsync(values);
+      const saved = await upsert.mutateAsync(cleanedValues);
 
       // Optionally keep PostGIS geography in-sync via RPC (safe if missing)
       try {
-        if (values.latitude != null && values.longitude != null) {
+        if (cleanedValues.latitude != null && cleanedValues.longitude != null) {
           await supabase.rpc('app.set_client_location', {
             p_tenant_id: TENANT_ID,
             p_client_id: edit?.id ?? (saved as any)?.id,
-            p_lat: Number(values.latitude),
-            p_lon: Number(values.longitude)
+            p_lat: Number(cleanedValues.latitude),
+            p_lon: Number(cleanedValues.longitude)
           });
         }
       } catch {
