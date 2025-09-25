@@ -94,7 +94,7 @@ export default function AddClient() {
       const location = result.geometry.location;
       toast({ kind: 'success', msg: 'Location found and will be saved' });
       
-      // Store geocoded data for form submission
+      // Store geocoded data for form submission (preserve existing form data)
       (window as any).geocodedLocation = {
         lat: location.lat(),
         lng: location.lng(),

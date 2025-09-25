@@ -168,6 +168,7 @@ export default function Clients() {
         });
         
         const location = result.geometry.location;
+        // Only update latitude and longitude, preserve other fields
         setValue('latitude', location.lat());
         setValue('longitude', location.lng());
         toast({
