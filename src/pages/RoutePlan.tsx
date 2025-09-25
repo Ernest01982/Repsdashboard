@@ -111,8 +111,8 @@ export default function RoutePlan() {
     try {
       const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
       
-      if (!gm.DirectionsService) {
-        throw new Error('Directions API not available');
+      if (!gm?.DirectionsService) {
+        throw new Error('Directions service not available');
       }
       
       const directionsService = new gm.DirectionsService();
@@ -132,8 +132,14 @@ export default function RoutePlan() {
           optimizeWaypoints: true,
           travelMode: gm.TravelMode.DRIVING
         }, (result: any, status: string) => {
-          if (status === 'OK') {
+          if (status === gm.DirectionsStatus.OK && result) {
             resolve(result);
+          } else if (status === gm.DirectionsStatus.ZERO_RESULTS) {
+            reject(new Error('No route found'));
+          } else if (status === gm.DirectionsStatus.OVER_QUERY_LIMIT) {
+            reject(new Error('Directions API quota exceeded'));
+          } else if (status === gm.DirectionsStatus.REQUEST_DENIED) {
+            reject(new Error('Directions API request denied - check API key permissions'));
           } else {
             reject(new Error(`Route optimization failed: ${status}`));
           }
@@ -141,7 +147,10 @@ export default function RoutePlan() {
       });
       
       const route = result.routes[0];
-      const leg = route.legs[0];
+      
+      if (!route) {
+        throw new Error('No route data received');
+      }
       
       setOptimizedRoute({
         distanceMeters: route.legs.reduce((sum: number, leg: any) => sum + leg.distance.value, 0),
@@ -151,7 +160,7 @@ export default function RoutePlan() {
       });
       
       // Convert Google Maps path to Leaflet format
-      const path = route.overview_path.map((point: any) => [point.lat(), point.lng()]);
+      const path = route.overview_path?.map((point: any) => [point.lat(), point.lng()]) || [];
       setRoutePolyline(path);
       
       toast({ 
@@ -160,7 +169,8 @@ export default function RoutePlan() {
       });
       
     } catch (error: any) {
-      toast({ kind: 'error', msg: `Route optimization unavailable: ${error.message}` });
+      console.error('Route optimization error:', error);
+      toast({ kind: 'error', msg: `Route optimization failed: ${error.message}` });
     }
   };
 

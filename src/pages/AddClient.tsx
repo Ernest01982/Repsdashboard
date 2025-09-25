@@ -69,16 +69,22 @@ export default function AddClient() {
     try {
       const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
       
-      if (!gm.Geocoder) {
-        throw new Error('Geocoding API not available');
+      if (!gm?.Geocoder) {
+        throw new Error('Geocoding service not available');
       }
       
       const geocoder = new gm.Geocoder();
       
       const result = await new Promise<any>((resolve, reject) => {
         geocoder.geocode({ address: fullAddress }, (results: any[], status: string) => {
-          if (status === 'OK' && results[0]) {
+          if (status === gm.GeocoderStatus.OK && results?.[0]) {
             resolve(results[0]);
+          } else if (status === gm.GeocoderStatus.ZERO_RESULTS) {
+            reject(new Error('No results found for this address'));
+          } else if (status === gm.GeocoderStatus.OVER_QUERY_LIMIT) {
+            reject(new Error('Geocoding quota exceeded'));
+          } else if (status === gm.GeocoderStatus.REQUEST_DENIED) {
+            reject(new Error('Geocoding request denied - check API key permissions'));
           } else {
             reject(new Error(`Geocoding failed: ${status}`));
           }
@@ -87,6 +93,7 @@ export default function AddClient() {
       
       const location = result.geometry.location;
       toast({ kind: 'success', msg: 'Location found and will be saved' });
+      
       // Store geocoded data for form submission
       (window as any).geocodedLocation = {
         lat: location.lat(),
@@ -94,7 +101,8 @@ export default function AddClient() {
         formatted_address: result.formatted_address
       };
     } catch (error: any) {
-      toast({ kind: 'error', msg: `Geocoding unavailable: ${error.message}` });
+      console.error('Geocoding error:', error);
+      toast({ kind: 'error', msg: `Geocoding failed: ${error.message}` });
     } finally {
       setGeocoding(false);
     }

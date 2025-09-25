@@ -183,40 +183,54 @@ export default function Clients() {
       try {
         const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
         
-        // Check if Places API is available
-        if (!gm.places || !gm.places.Autocomplete) {
-          console.warn('Places API not available - autocomplete disabled');
+        if (!gm?.places?.Autocomplete) {
+          console.warn('Places Autocomplete not available');
           return;
         }
         
         const autocomplete = new gm.places.Autocomplete(inputElement, {
-          types: ['establishment', 'geocode'],
-          fields: ['formatted_address', 'geometry', 'address_components']
+          types: ['address'],
+          fields: ['address_components', 'geometry', 'formatted_address']
         });
         
         autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace();
-          if (place.geometry) {
+          
+          if (!place.geometry) {
+            console.warn('No geometry data for selected place');
+            return;
+          }
+          
+          try {
             // Parse address components
             const components = place.address_components || [];
             const getComponent = (type: string) => 
               components.find((c: any) => c.types.includes(type))?.long_name || '';
             
-            setValue('address', getComponent('street_number') + ' ' + getComponent('route'));
+            const streetNumber = getComponent('street_number');
+            const route = getComponent('route');
+            const address = [streetNumber, route].filter(Boolean).join(' ');
+            
+            setValue('address', address);
             setValue('city', getComponent('locality') || getComponent('administrative_area_level_2'));
             setValue('region', getComponent('administrative_area_level_1'));
             setValue('postal_code', getComponent('postal_code'));
             setValue('country', getComponent('country'));
             setValue('latitude', place.geometry.location.lat());
             setValue('longitude', place.geometry.location.lng());
-          toast({
-            kind: 'success',
-            msg: 'Address autocompleted and geocoded'
-          });
+            
+            toast({
+              kind: 'success',
+              msg: 'Address autocompleted and geocoded'
+            });
+          } catch (error) {
+            console.error('Error processing place data:', error);
+            toast({ kind: 'error', msg: 'Error processing address data' });
           }
         });
-      } catch (e: any) {
-        console.warn('Places API unavailable - autocomplete disabled:', e);
+      } catch (error: any) {
+        console.error('Failed to initialize address autocomplete:', error);
+        // Don't show error toast for autocomplete failures - just disable the feature
       }
     }
 

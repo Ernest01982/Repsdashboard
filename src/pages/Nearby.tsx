@@ -86,23 +86,29 @@ export default function Nearby() {
     try {
       const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
       
-      if (!gm.places || !gm.places.PlacesService) {
-        throw new Error('Places API not available');
+      if (!gm?.places?.PlacesService) {
+        throw new Error('Places service not available');
       }
       
       const service = new gm.places.PlacesService(document.createElement('div'));
       
       const request = {
         location: new gm.LatLng(userLocation.lat, userLocation.lng),
-        radius: 8000,
-        keyword: 'wine store bottle shop liquor store',
+        radius: 5000,
+        keyword: 'wine liquor bottle shop',
         type: 'store'
       };
       
       const results = await new Promise<any[]>((resolve, reject) => {
         service.nearbySearch(request, (results: any[], status: string) => {
-          if (status === gm.places.PlacesServiceStatus.OK) {
+          if (status === gm.places.PlacesServiceStatus.OK && results) {
             resolve(results || []);
+          } else if (status === gm.places.PlacesServiceStatus.ZERO_RESULTS) {
+            resolve([]);
+          } else if (status === gm.places.PlacesServiceStatus.OVER_QUERY_LIMIT) {
+            reject(new Error('Places API quota exceeded'));
+          } else if (status === gm.places.PlacesServiceStatus.REQUEST_DENIED) {
+            reject(new Error('Places API request denied - check API key permissions'));
           } else {
             reject(new Error(`Places search failed: ${status}`));
           }
@@ -122,7 +128,8 @@ export default function Nearby() {
       setShowProspects(true);
       toast({ kind: 'success', msg: `Found ${prospects.length} prospects` });
     } catch (error: any) {
-      toast({ kind: 'error', msg: `Places search unavailable: ${error.message}` });
+      console.error('Places search error:', error);
+      toast({ kind: 'error', msg: `Places search failed: ${error.message}` });
     }
   };
 
