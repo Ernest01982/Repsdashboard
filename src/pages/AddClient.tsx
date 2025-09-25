@@ -68,6 +68,11 @@ export default function AddClient() {
     setGeocoding(true);
     try {
       const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+      
+      if (!gm.Geocoder) {
+        throw new Error('Geocoding API not available');
+      }
+      
       const geocoder = new gm.Geocoder();
       
       const result = await new Promise<any>((resolve, reject) => {
@@ -89,7 +94,7 @@ export default function AddClient() {
         formatted_address: result.formatted_address
       };
     } catch (error: any) {
-      toast({ kind: 'error', msg: `Geocoding failed: ${error.message}` });
+      toast({ kind: 'error', msg: `Geocoding unavailable: ${error.message}` });
     } finally {
       setGeocoding(false);
     }

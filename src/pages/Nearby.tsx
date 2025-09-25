@@ -85,6 +85,11 @@ export default function Nearby() {
 
     try {
       const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+      
+      if (!gm.places || !gm.places.PlacesService) {
+        throw new Error('Places API not available');
+      }
+      
       const service = new gm.places.PlacesService(document.createElement('div'));
       
       const request = {
@@ -117,7 +122,7 @@ export default function Nearby() {
       setShowProspects(true);
       toast({ kind: 'success', msg: `Found ${prospects.length} prospects` });
     } catch (error: any) {
-      toast({ kind: 'error', msg: error.message });
+      toast({ kind: 'error', msg: `Places search unavailable: ${error.message}` });
     }
   };
 

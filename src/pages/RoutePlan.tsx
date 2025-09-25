@@ -110,6 +110,11 @@ export default function RoutePlan() {
 
     try {
       const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+      
+      if (!gm.DirectionsService) {
+        throw new Error('Directions API not available');
+      }
+      
       const directionsService = new gm.DirectionsService();
       
       const waypoints = selectedClients.slice(0, -1).map(c => ({
@@ -155,7 +160,7 @@ export default function RoutePlan() {
       });
       
     } catch (error: any) {
-      toast({ kind: 'error', msg: error.message });
+      toast({ kind: 'error', msg: `Route optimization unavailable: ${error.message}` });
     }
   };
 

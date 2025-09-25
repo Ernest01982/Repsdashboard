@@ -182,6 +182,13 @@ export default function Clients() {
     async function handleAddressAutocomplete(inputElement: HTMLInputElement) {
       try {
         const gm = await loadGoogleMaps(import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY);
+        
+        // Check if Places API is available
+        if (!gm.places || !gm.places.Autocomplete) {
+          console.warn('Places API not available - autocomplete disabled');
+          return;
+        }
+        
         const autocomplete = new gm.places.Autocomplete(inputElement, {
           types: ['establishment', 'geocode'],
           fields: ['formatted_address', 'geometry', 'address_components']
@@ -209,7 +216,7 @@ export default function Clients() {
           }
         });
       } catch (e: any) {
-        console.warn('Autocomplete setup failed:', e);
+        console.warn('Places API unavailable - autocomplete disabled:', e);
       }
     }
 
