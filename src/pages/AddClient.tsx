@@ -59,8 +59,15 @@ export default function AddClient() {
   });
 
   const geocodeLocation = async () => {
-    const fullAddress = `${address}, ${city}`.trim();
-    if (!fullAddress || fullAddress === ',') {
+    const currentValues = watch(); // Get all current form values
+    const fullAddress = [
+      currentValues.address,
+      currentValues.city,
+      currentValues.region,
+      currentValues.postal_code
+    ].filter(Boolean).join(', ');
+    
+    if (!fullAddress) {
       toast({ kind: 'error', msg: 'Please enter address and city first' });
       return;
     }
@@ -92,14 +99,16 @@ export default function AddClient() {
       });
       
       const location = result.geometry.location;
-      toast({ kind: 'success', msg: 'Location found and will be saved' });
+      const lat = location.lat();
+      const lng = location.lng();
       
-      // Store geocoded data for form submission (preserve existing form data)
-      (window as any).geocodedLocation = {
-        lat: location.lat(),
-        lng: location.lng(),
-        formatted_address: result.formatted_address
-      };
+      // Store coordinates for form submission without clearing other fields
+      (window as any).geocodedLocation = { lat, lng };
+      
+      toast({ 
+        kind: 'success', 
+        msg: `Location found: ${lat.toFixed(5)}, ${lng.toFixed(5)}` 
+      });
     } catch (error: any) {
       console.error('Geocoding error:', error);
       toast({ kind: 'error', msg: `Geocoding failed: ${error.message}` });
@@ -246,6 +255,11 @@ export default function AddClient() {
 
         {(address || city) && (
           <div className="p-3 bg-gray-50 rounded-lg">
+            {(window as any).geocodedLocation && (
+              <div className="mb-2 text-sm text-green-600">
+                ✓ Coordinates: {(window as any).geocodedLocation.lat.toFixed(5)}, {(window as any).geocodedLocation.lng.toFixed(5)}
+              </div>
+            )}
             <Button
               type="button"
               onClick={geocodeLocation}
