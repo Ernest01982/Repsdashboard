@@ -40,16 +40,24 @@ export async function uploadStaged(creator?: string) {
   
   for (const p of staged) {
     try {
-      const file = await imageCompression(p.blob, { 
-        maxWidthOrHeight: 1280, 
-        maxSizeMB: 1 
+      const sourceFile = p.blob instanceof File
+        ? p.blob
+        : new File([p.blob], `${p.id}.jpg`, { type: p.blob.type || 'image/jpeg' });
+
+      const compressed = await imageCompression(sourceFile, {
+        maxWidthOrHeight: 1280,
+        maxSizeMB: 1
       });
-      
+
+      const uploadFile = compressed instanceof File
+        ? compressed
+        : new File([compressed], `${p.id}.jpg`, { type: 'image/jpeg' });
+
       const path = `${TENANT_ID}/${p.visit_id ?? 'no-visit'}/${p.id}.jpg`;
-      
+
       const { error: upErr } = await supabase.storage
         .from('photos')
-        .upload(path, file, { 
+        .upload(path, uploadFile, {
           upsert: true, 
           contentType: 'image/jpeg' 
         });

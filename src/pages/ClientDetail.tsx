@@ -4,14 +4,61 @@ import { supabase } from '../lib/supabase';
 import { TENANT_ID } from '../lib/env';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/Button';
-import DataRow from '../components/DataRow';
+
+type ClientRecord = {
+  id: string;
+  name: string;
+  city: string | null;
+  address: string | null;
+  is_active: boolean;
+  last_visit_at: string | null;
+  last_order_at: string | null;
+  retailer: { name: string | null } | null;
+};
+
+type ClientListing = {
+  id: string;
+  status: string;
+  facings: number;
+  shelf_price: number | null;
+  promo_flag: boolean | null;
+  last_checked_at: string | null;
+  product: {
+    brand: string | null;
+    name: string | null;
+    sku_code: string | null;
+  } | null;
+};
+
+type ClientVisit = {
+  id: string;
+  start_at: string;
+  end_at: string | null;
+  duration_min: number | null;
+  outcome: string | null;
+  notes: string | null;
+};
+
+type ClientTask = {
+  id: string;
+  due_at: string;
+  status: string;
+  notes: string | null;
+};
+
+function pickFirst<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
 
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const { data: client } = useQuery({
+  const { data: client } = useQuery<ClientRecord | null>({
     queryKey: ['client', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -23,14 +70,17 @@ export default function ClientDetail() {
         .eq('tenant_id', TENANT_ID)
         .eq('id', id!)
         .single();
-      
+
       if (error) throw error;
-      return data;
+      const normalized = data
+        ? { ...data, retailer: pickFirst(data.retailer) }
+        : null;
+      return (normalized ?? null) as ClientRecord | null;
     },
     enabled: !!id
   });
 
-  const { data: listings } = useQuery({
+  const { data: listings } = useQuery<ClientListing[]>({
     queryKey: ['client-products', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -43,14 +93,18 @@ export default function ClientDetail() {
         .eq('client_id', id!)
         .order('last_checked_at', { ascending: false })
         .limit(100);
-      
+
       if (error) throw error;
-      return data;
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        product: pickFirst(item.product)
+      }));
+      return normalized as ClientListing[];
     },
     enabled: !!id
   });
 
-  const { data: visits } = useQuery({
+  const { data: visits } = useQuery<ClientVisit[]>({
     queryKey: ['client-visits', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -60,14 +114,14 @@ export default function ClientDetail() {
         .eq('client_id', id!)
         .order('start_at', { ascending: false })
         .limit(10);
-      
+
       if (error) throw error;
-      return data;
+      return (data ?? []) as ClientVisit[];
     },
     enabled: !!id
   });
 
-  const { data: tasks } = useQuery({
+  const { data: tasks } = useQuery<ClientTask[]>({
     queryKey: ['client-tasks', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -77,9 +131,13 @@ export default function ClientDetail() {
         .eq('client_id', id!)
         .eq('status', 'open')
         .order('due_at');
-      
+
       if (error) throw error;
-      return data;
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        client: pickFirst(item.client)
+      }));
+      return normalized as ClientTask[];
     },
     enabled: !!id
   });

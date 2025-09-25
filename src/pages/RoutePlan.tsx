@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useLocation as useRouterLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation as useRouterLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { supabase } from '../lib/supabase';
@@ -9,19 +9,46 @@ import { useToast } from '../components/Toast';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 
+type RouteClient = {
+  id: string;
+  name: string;
+  city: string | null;
+  latitude: number;
+  longitude: number;
+  retailer: { name: string | null } | null;
+};
+
+type RouteState = {
+  selectedClients?: RouteClient[];
+};
+
+function pickFirst<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
 export default function RoutePlan() {
   const routerLocation = useRouterLocation();
+  const navigate = useNavigate();
   const toast = useToast();
-  
-  const [selectedClients, setSelectedClients] = useState<any[]>(
-    routerLocation.state?.selectedClients || []
+  const locationState = routerLocation.state as RouteState | null;
+
+  const [selectedClients, setSelectedClients] = useState<RouteClient[]>(
+    locationState?.selectedClients ?? []
   );
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [optimizedRoute, setOptimizedRoute] = useState<any>(null);
+  const [optimizedRoute, setOptimizedRoute] = useState<{
+    distanceMeters: number;
+    duration: string;
+    waypointOrder: number[];
+    encodedPolyline: string;
+  } | null>(null);
   const [routePolyline, setRoutePolyline] = useState<[number, number][]>([]);
   const [showClientPicker, setShowClientPicker] = useState(false);
 
-  const { data: clients } = useQuery({
+  const { data: clients } = useQuery<RouteClient[]>({
     queryKey: ['route-clients'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -33,29 +60,35 @@ export default function RoutePlan() {
         .eq('is_active', true)
         .order('name')
         .limit(500);
-      
+
       if (error) throw error;
-      return data;
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        retailer: pickFirst(item.retailer)
+      }));
+      return normalized as RouteClient[];
     }
   });
 
-  useState(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-          });
-        },
-        () => {
-          toast({ kind: 'error', msg: 'Could not get your location' });
-        }
-      );
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      return;
     }
-  });
 
-  const toggleClient = (client: any) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        });
+      },
+      () => {
+        toast({ kind: 'error', msg: 'Could not get your location' });
+      }
+    );
+  }, [toast]);
+
+  const toggleClient = (client: RouteClient) => {
     const isSelected = selectedClients.some(c => c.id === client.id);
     if (isSelected) {
       setSelectedClients(prev => prev.filter(c => c.id !== client.id));
@@ -141,8 +174,8 @@ export default function RoutePlan() {
           
           {/* Selected clients */}
           {selectedClients.map((client, index) => (
-            <Marker 
-              key={client.id} 
+            <Marker
+              key={client.id}
               position={[client.latitude, client.longitude]}
             >
               <Popup>
@@ -216,10 +249,10 @@ export default function RoutePlan() {
         title="Select Clients for Route"
       >
         <div className="max-h-96 overflow-y-auto">
-          {clients?.map(client => {
+          {clients?.map((client: RouteClient) => {
             const isSelected = selectedClients.some(c => c.id === client.id);
             return (
-              <div 
+              <div
                 key={client.id} 
                 onClick={() => toggleClient(client)}
                 className={`p-3 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 ${

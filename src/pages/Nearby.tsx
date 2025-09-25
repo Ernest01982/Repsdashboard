@@ -12,6 +12,24 @@ import Button from '../components/Button';
 import Modal from '../components/Modal';
 import 'leaflet/dist/leaflet.css';
 
+type NearbyClient = {
+  id: string;
+  name: string;
+  city: string | null;
+  latitude: number;
+  longitude: number;
+  last_visit_at: string | null;
+  last_order_at: string | null;
+  retailer: { name: string | null } | null;
+};
+
+function pickFirst<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
 export default function Nearby() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -20,7 +38,7 @@ export default function Nearby() {
   const [showProspects, setShowProspects] = useState(false);
   const [selectedProspect, setSelectedProspect] = useState<any>(null);
 
-  const { data: clients } = useQuery({
+  const { data: clients } = useQuery<NearbyClient[]>({
     queryKey: ['nearby-clients'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -33,9 +51,13 @@ export default function Nearby() {
         .not('latitude', 'is', null)
         .not('longitude', 'is', null)
         .limit(1000);
-      
+
       if (error) throw error;
-      return data;
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        retailer: pickFirst(item.retailer)
+      }));
+      return normalized as NearbyClient[];
     }
   });
 
@@ -138,10 +160,10 @@ export default function Nearby() {
           </Marker>
           
           {/* Client locations */}
-          {clients?.map(client => (
+          {clients?.map((client: NearbyClient) => (
             client.latitude && client.longitude && (
-              <Marker 
-                key={client.id} 
+              <Marker
+                key={client.id}
                 position={[client.latitude, client.longitude]}
               >
                 <Popup>
