@@ -3,12 +3,32 @@ import { supabase } from '../lib/supabase';
 import { TENANT_ID } from '../lib/env';
 import { useAuth } from '../contexts/AuthContext';
 
+type TaskRecord = {
+  id: string;
+  due_at: string;
+  status: string;
+  notes: string | null;
+  client: { name: string | null } | null;
+};
+
+function pickFirst<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
 export default function Tasks() {
   const { user } = useAuth();
   
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks'],
+  const repId = user?.id ?? null;
+
+  const { data: tasks, isLoading } = useQuery<TaskRecord[]>({
+    queryKey: ['tasks', repId],
     queryFn: async () => {
+      if (!repId) {
+        return [];
+      }
       const { data, error } = await supabase
         .from('rep_tasks')
         .select(`
@@ -16,15 +36,19 @@ export default function Tasks() {
           client:client_id(name)
         `)
         .eq('tenant_id', TENANT_ID)
-        .eq('rep_id', user?.id)
+        .eq('rep_id', repId)
         .eq('status', 'open')
         .order('due_at')
         .limit(500);
-      
+
       if (error) throw error;
-      return data;
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        client: pickFirst(item.client)
+      }));
+      return normalized as TaskRecord[];
     },
-    enabled: !!user
+    enabled: !!repId
   });
 
   if (isLoading) return <div className="p-4">Loading tasks...</div>;

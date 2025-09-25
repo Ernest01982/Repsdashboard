@@ -3,12 +3,34 @@ import { supabase } from '../lib/supabase';
 import { TENANT_ID } from '../lib/env';
 import { useAuth } from '../contexts/AuthContext';
 
+type OrderRecord = {
+  id: string;
+  order_date: string;
+  status: string;
+  total_cases: number;
+  discount_total: number | null;
+  notes: string | null;
+  client: { name: string | null } | null;
+};
+
+function pickFirst<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
 export default function Orders() {
   const { user } = useAuth();
   
-  const { data: orders, isLoading } = useQuery({
-    queryKey: ['orders'],
+  const repId = user?.id ?? null;
+
+  const { data: orders, isLoading } = useQuery<OrderRecord[]>({
+    queryKey: ['orders', repId],
     queryFn: async () => {
+      if (!repId) {
+        return [];
+      }
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -16,14 +38,18 @@ export default function Orders() {
           client:client_id(name)
         `)
         .eq('tenant_id', TENANT_ID)
-        .eq('rep_id', user?.id)
+        .eq('rep_id', repId)
         .order('order_date', { ascending: false })
         .limit(200);
-      
+
       if (error) throw error;
-      return data;
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        client: pickFirst(item.client)
+      }));
+      return normalized as OrderRecord[];
     },
-    enabled: !!user
+    enabled: !!repId
   });
 
   if (isLoading) return <div className="p-4">Loading orders...</div>;

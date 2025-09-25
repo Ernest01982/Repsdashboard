@@ -27,7 +27,7 @@ export default function VisitEnd() {
       outcome: 'completed'
     }
   });
-  const useLocation = watch('useLocation');
+  const useLocationValue = watch('useLocation');
 
   const getLocation = () => {
     if (!navigator.geolocation) {
@@ -143,7 +143,7 @@ export default function VisitEnd() {
           </label>
         </div>
 
-        {useLocation && (
+        {useLocationValue && (
           <div className="p-3 bg-gray-50 rounded-lg">
             {geoLocation ? (
               <p className="text-sm text-green-600">
@@ -164,7 +164,7 @@ export default function VisitEnd() {
         <div className="pt-4 space-y-2">
           <Button
             type="submit"
-            disabled={loading || (useLocation && !geoLocation)}
+            disabled={loading || (useLocationValue && !geoLocation)}
             className="w-full"
           >
             {loading ? 'Ending Visit...' : 'End Visit'}

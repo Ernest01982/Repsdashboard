@@ -10,6 +10,11 @@ import { supabase } from '../lib/supabase';
 import { geocodeAddress } from '../lib/maps';
 import Button from '../components/Button';
 
+type RetailerOption = {
+  id: string;
+  name: string | null;
+};
+
 type FormData = {
   name: string;
   retailer_id: string;
@@ -39,7 +44,7 @@ export default function AddClient() {
   const city = watch('city');
 
   // Load retailers for dropdown
-  const { data: retailers } = useQuery({
+  const { data: retailers } = useQuery<RetailerOption[]>({
     queryKey: ['retailers'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -47,9 +52,9 @@ export default function AddClient() {
         .select('id, name')
         .eq('tenant_id', TENANT_ID)
         .order('name');
-      
+
       if (error) throw error;
-      return data;
+      return (data ?? []) as RetailerOption[];
     }
   });
 

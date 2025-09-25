@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string)?.trim();
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim();
@@ -8,16 +8,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Singleton pattern for Supabase client
-let supabaseInstance: ReturnType<typeof createClient> | null = null;
+let supabaseInstance: SupabaseClient<any, 'public'> | null = null;
 
-export function getSupabase() {
+export function getSupabase(): SupabaseClient<any, 'public'> {
   if (!supabaseInstance) {
     if (!supabaseUrl || !supabaseAnonKey) {
       throw new Error('Missing Supabase configuration. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
     }
-    
-    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { 
+
+    const options: SupabaseClientOptions<'public'> = {
+      auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
@@ -30,7 +30,9 @@ export function getSupabase() {
           'X-Client-Info': 'wine-crm-rep'
         }
       }
-    });
+    };
+
+    supabaseInstance = createClient<any, 'public'>(supabaseUrl, supabaseAnonKey, options);
   }
   return supabaseInstance;
 }
