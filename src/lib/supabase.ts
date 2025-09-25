@@ -1,41 +1,36 @@
-import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js'
+import { Database } from './database.types'
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string)?.trim();
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim();
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+  throw new Error('Missing Supabase environment variables')
 }
 
-// Singleton pattern for Supabase client
-let supabaseInstance: SupabaseClient<any, 'public'> | null = null;
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
 
-export function getSupabase(): SupabaseClient<any, 'public'> {
-  if (!supabaseInstance) {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Missing Supabase configuration. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
+// Enhanced error handler for Supabase requests
+export const handleSupabaseError = (error: any, operation: string) => {
+  console.error(`Supabase ${operation} error:`, error)
+  
+  if (error?.code === '54001') {
+    return {
+      message: 'Database configuration issue detected. Please contact support.',
+      details: 'Stack depth limit exceeded - this requires database configuration changes.',
+      userMessage: 'There\'s a temporary issue with the database. Please try again later or contact support.'
     }
-
-    const options: SupabaseClientOptions<'public'> = {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      },
-      db: {
-        schema: 'public'
-      },
-      global: {
-        headers: {
-          'X-Client-Info': 'wine-crm-rep'
-        }
-      }
-    };
-
-    supabaseInstance = createClient<any, 'public'>(supabaseUrl, supabaseAnonKey, options);
   }
-  return supabaseInstance;
+  
+  if (error?.code === 'PGRST116') {
+    return {
+      message: 'Row Level Security policy violation',
+      userMessage: 'You don\'t have permission to access this data.'
+    }
+  }
+  
+  return {
+    message: error?.message || 'An unexpected error occurred',
+    userMessage: error?.message || 'Something went wrong. Please try again.'
+  }
 }
-
-// Export singleton instance for backward compatibility
-export const supabase = getSupabase();
